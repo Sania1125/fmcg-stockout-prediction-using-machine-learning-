@@ -1,661 +1,429 @@
-FMCG Inventory Stockout Risk Prediction Using Machine Learning
+# Predicting FMCG Stockout Risk Using Machine Learning
 
-A Flask-based machine learning application that estimates whether an SKU-store-day observation is likely to experience a stockout within the next seven days. The system converts historical inventory and sales information into leakage-safe features, compares multiple classification algorithms, saves the selected model, and provides a web interface for risk prediction and decision support.
+## Introduction
 
-Important: This project uses the Kaggle Retail Store Inventory Forecasting Dataset, which Kaggle describes as synthetic yet realistic. It is not presented as real company transaction data. The seven-day stockout target is also a project-derived proxy rather than an observed stockout label.
+In retail and FMCG businesses, maintaining the right inventory level is an important challenge. If inventory becomes too low, customers may find products unavailable. If inventory is too high, businesses may face unnecessary holding costs and excess stock.
 
-1. Project Overview
+This project explores how **Machine Learning can be used to estimate stockout risk within the next seven days** using historical inventory, sales, demand, pricing, promotion, and store/product information.
 
-Business Problem
+The goal is not to automatically place purchase orders, but to provide an **early warning signal that can support inventory-management decisions**.
 
-Stockouts occur when a product is unavailable when customers want to purchase it. For inventory teams, an early warning can help them review stock levels, demand patterns, promotions, and replenishment needs before the next planning cycle.
+---
 
-This project addresses the following business question:
+## The Business Problem
 
-Can historical inventory, sales, demand variability, pricing, promotion, and store/product information be used to estimate the risk of a stockout during the next seven days?
+A simple question motivated this project:
 
-Project Objective
+> **Can historical inventory and sales information help identify whether a product is at risk of a stockout within the next seven days?**
 
-The main objective is to build a binary classification system that estimates:
+For an inventory manager, an early risk signal could help them investigate:
 
-0 — No derived stockout risk
+* Current stock levels
+* Recent sales velocity
+* Demand variability
+* Promotions
+* Pricing
+* Product category
+* Region
+* Seasonal patterns
 
-1 — Derived stockout risk within 7 days
+This transforms inventory management from simply looking at current stock into a more data-driven risk assessment process.
 
-The application also converts the model probability into project-defined risk bands:
+---
 
-Low Risk: probability < 35%
+## Project Objective
 
-Medium Risk: 35%–64.9%
+The objective of this project is to develop a **binary classification model** that estimates whether an SKU-store-day observation has a derived stockout risk within seven days.
 
-High Risk: ≥ 65%
+The target is represented as:
 
-These thresholds are project decision bands, not universal industry standards.
+* **0 — No derived stockout risk**
+* **1 — Derived stockout risk**
 
-2. Target Users and Business Decision
+The application then converts the model's predicted probability into three project-defined risk bands:
 
-Target Users
+* **Low Risk:** below 35%
+* **Medium Risk:** 35%–64.9%
+* **High Risk:** 65% or above
 
-Inventory managers
+These thresholds are defined for this project and should not be interpreted as universal industry standards.
 
-Replenishment planners
+---
 
-Store operations teams
+## Dataset
 
-Supply-chain analysts
+The project uses the **Retail Store Inventory Forecasting Dataset** from Kaggle.
 
-Decision Supported by the Prediction
+The dataset contains approximately **73,100 records and 15 columns** covering inventory and retail-related information.
 
-The prediction is intended as decision support, not an automatic purchase-order system.
+Important variables include:
 
-Risk Level
+* Date
+* Store ID
+* Product ID
+* Category
+* Region
+* Inventory Level
+* Units Sold
+* Units Ordered
+* Demand Forecast
+* Price
+* Discount
+* Weather Condition
+* Holiday/Promotion
+* Competitor Pricing
+* Seasonality
 
-Suggested Business Action
+One important point is that the dataset is described as **synthetic but realistic**. Therefore, the project is presented as a machine-learning prototype rather than a system trained on confidential real-world company transactions.
 
-Low
+---
 
-Continue normal monitoring
+## Creating the Target Variable
 
-Medium
+The original dataset does not contain the exact stockout label required for this project.
 
-Review inventory, recent demand, and upcoming promotions
+Therefore, a project-specific target called:
 
-High
+`stockout_within_7_days`
 
-Review replenishment requirements and investigate stockout risk promptly
+was created.
 
-3. Dataset
+For each Store ID and Product ID, the following seven future days were examined.
 
-The project uses the original:
+A positive target is assigned when:
 
-Retail Store Inventory Forecasting Dataset
-
-Source: Kaggle — Retail Store Inventory Forecasting Dataset
-
-The dataset contains approximately 73,100 rows and 15 columns. Kaggle describes it as synthetic but realistic and lists it as CC0 Public Domain.
-
-Important Source Fields
-
-Date
-
-Store ID
-
-Product ID
-
-Category
-
-Region
-
-Inventory Level
-
-Units Sold
-
-Units Ordered
-
-Demand Forecast
-
-Price
-
-Discount
-
-Weather Condition
-
-Holiday/Promotion
-
-Competitor Pricing
-
-Seasonality
-
-The original CSV is preserved unchanged in:
-
-data/raw/retail_store_inventory.csv
-
-4. Target Variable Creation
-
-The original dataset does not contain the exact target required by this project.
-
-The project derives:
-
-stockout_within_7_days
-
-The target is assigned as 1 when, for the same Store ID + Product ID, any of the following seven future days satisfies:
-
+```text
 Inventory Level <= Units Sold
+```
 
-Otherwise, the target is 0.
+occurs during the future seven-day period.
 
-Therefore, this is a future demand-shortfall proxy, not a directly observed stockout label.
+This means the target represents a **derived future inventory-shortfall proxy**, rather than a directly observed stockout event.
 
-Only the future observations required to construct the target are used for labeling. They are not used as predictor values.
+This distinction is important when interpreting the model results.
 
-5. Feature Engineering
+---
 
-The model uses the following features:
+## Feature Engineering
 
-Project Feature
+Raw data is not always directly suitable for machine learning. Therefore, several useful features were created.
 
-Source / Derivation
+### Current Stock
 
-Current Stock
+Represents the available inventory level.
 
-Inventory Level
+### Sales Velocity
 
-Sales Velocity
+Calculated from historical sales to represent how quickly the product is moving.
 
-Prior 7-day mean of Units Sold
+### Demand Variability
 
-Demand Variability
+Measures variation in recent sales and helps represent demand uncertainty.
 
-Prior 7-day standard deviation of Units Sold
+### Lead Time
 
-Lead Time
+The original dataset does not contain supplier lead time, so the project uses a disclosed three-day planning assumption.
 
-3-day planning assumption because source data has no lead-time field
+### Promotion Status
 
-Promotion Status
+Indicates whether a promotion or holiday-related event is present.
 
-Holiday/Promotion
+### Price and Discount
 
-Price
+These variables can influence purchasing behavior and demand.
 
-Price
+### Calendar Features
 
-Discount
+Additional time-related information includes:
 
-Discount
+* Day of week
+* Month
+* Seasonality
 
-Category
+---
 
-Category
+## Preventing Data Leakage
 
-Region
+One of the important machine-learning concepts in this project is **data leakage**.
 
-Region
+The model should not use information from the future to make a prediction about the present.
 
-Weather Condition
+For example, when calculating sales velocity and demand variability, the project uses historical observations through shifted rolling features.
 
-Weather Condition
+The future information is used for creating the target, but not as predictor information.
 
-Seasonality
+This helps maintain a more realistic prediction setup.
 
-Seasonality
+---
 
-Day of Week
+## Machine Learning Models
 
-Derived from Date
+Instead of selecting one algorithm immediately, six classification models were compared:
 
-Month
+1. Logistic Regression
+2. K-Nearest Neighbors
+3. Gaussian Naive Bayes
+4. Linear Support Vector Machine
+5. Decision Tree
+6. Random Forest
 
-Derived from Date
+The purpose of comparing multiple models is to determine how different algorithms behave on the same prediction problem.
 
-Leakage Prevention
+---
 
-Historical rolling features use shifted values (shift(1)), so the model's predictor values are based only on information available before the prediction point.
+## Model Evaluation
 
-The incomplete final seven-day horizons are removed when constructing the target.
+The models were evaluated using a chronological holdout test set.
 
-6. Machine Learning Workflow
+The following metrics were considered:
 
-The project follows this pipeline:
+* Accuracy
+* Precision
+* Recall
+* F1-score
+* ROC-AUC
 
-Original Kaggle Dataset
-        ↓
+For a stockout-risk problem, accuracy alone is not enough.
+
+For example, if stockout-risk cases are relatively uncommon, a model could obtain high accuracy simply by predicting the majority class most of the time.
+
+That is why **Recall, Precision, F1-score, and ROC-AUC** are also important.
+
+---
+
+## Model Comparison Results
+
+The actual project comparison produced the following results:
+
+| Model                | Accuracy | Precision | Recall |    F1 | ROC-AUC |
+| -------------------- | -------: | --------: | -----: | ----: | ------: |
+| Logistic Regression  |   49.59% |     3.73% | 51.41% | 6.96% |   0.511 |
+| KNN                  |     ~96% |        0% |     0% |    0% |   ~0.50 |
+| Gaussian Naive Bayes |     ~96% |        0% |     0% |    0% |   ~0.50 |
+| Linear SVM           |     ~96% |        0% |     0% |    0% |   ~0.50 |
+| Decision Tree        |     ~96% |        0% |     0% |    0% |   ~0.50 |
+| Random Forest        |     ~96% |        0% |     0% |    0% |   ~0.50 |
+
+The exact values are stored in the project's:
+
+```text
+outputs/results/model_comparison.csv
+```
+
+### What Do These Results Tell Us?
+
+An important observation is that several models achieve approximately 96% accuracy while predicting essentially no positive stockout-risk cases.
+
+Therefore, their high accuracy should **not** be interpreted as strong stockout prediction performance.
+
+Logistic Regression identifies substantially more positive cases, producing:
+
+* **51.41% Recall**
+* **6.96% F1-score**
+* **0.511 ROC-AUC**
+
+However, its low precision shows that many of its positive predictions are false positives.
+
+This result demonstrates an important machine-learning lesson:
+
+> **A high accuracy score does not automatically mean that a classification model is useful.**
+
+---
+
+## Why Logistic Regression Was Selected
+
+The project's model-selection process prioritizes:
+
+1. F1-score
+2. Recall
+3. ROC-AUC
+
+Using this selection rule, **Logistic Regression** is currently selected.
+
+The model is saved as:
+
+```text
+models/best_model.joblib
+```
+
+The selection is based on the project's evaluation results and does not mean that Logistic Regression is universally the best algorithm for stockout prediction.
+
+---
+
+## Flask Web Application
+
+After training, the selected model is integrated into a **Flask web application**.
+
+The application provides a user-friendly interface where users can enter inventory-related information and receive a stockout-risk prediction.
+
+The workflow is:
+
+```text
+User Input
+     ↓
+Feature Preparation
+     ↓
+Saved ML Pipeline
+     ↓
+Prediction Probability
+     ↓
+Risk Classification
+     ↓
+Business Recommendation
+```
+
+The application displays the prediction as a decision-support signal rather than automatically making inventory purchases.
+
+---
+
+## Example Business Interpretation
+
+Suppose the application estimates a high probability of stockout risk.
+
+An inventory manager could then investigate:
+
+* Is current stock too low?
+* Has sales velocity increased?
+* Is demand becoming more variable?
+* Is a promotion increasing demand?
+* Is replenishment required?
+* Is the product affected by seasonal demand?
+
+The model therefore acts as an **early-warning tool**.
+
+---
+
+## Project Architecture
+
+The project follows a structured machine-learning workflow:
+
+```text
+Dataset
+   ↓
 Data Cleaning
-        ↓
+   ↓
 Feature Engineering
-        ↓
-Seven-Day Target Creation
-        ↓
-Chronological Train/Test Split
-        ↓
+   ↓
+Target Construction
+   ↓
+Train/Test Split
+   ↓
 Preprocessing
-        ↓
-Multiple Model Training
-        ↓
-Holdout Evaluation
-        ↓
+   ↓
+Model Training
+   ↓
 Model Comparison
-        ↓
-Selected Model Saved
-        ↓
-Flask Web Application
-        ↓
+   ↓
+Best Model
+   ↓
+Flask Application
+   ↓
 Stockout Risk Prediction
+```
 
-Preprocessing
+The project separates data processing, model training, saved models, outputs, templates, and application logic.
 
-Numerical features
+---
 
-Missing-value imputation using median
+## Technology Stack
 
-Standard scaling
+The project uses:
 
-Categorical features
+* **Python**
+* **Pandas**
+* **NumPy**
+* **Scikit-learn**
+* **Joblib**
+* **Flask**
+* **HTML**
+* **CSS**
+* **Matplotlib**
 
-Missing-value imputation using most frequent value
+These technologies cover the complete workflow from data processing and machine learning to web deployment.
 
-One-hot encoding
+---
 
-Unknown categories are handled safely
+## Project Limitations
 
-The preprocessing and model are stored together in a scikit-learn pipeline.
+Like any machine-learning prototype, this project has limitations.
 
-7. Models Compared
+### 1. Synthetic Dataset
 
-The project compares six classification algorithms:
+The source dataset is synthetic rather than actual company inventory data.
 
-Logistic Regression
+### 2. Derived Target
 
-K-Nearest Neighbors (KNN)
+The stockout target is constructed from inventory and sales information rather than coming from a directly recorded stockout field.
 
-Gaussian Naive Bayes
+### 3. Assumed Lead Time
 
-Linear Support Vector Machine (SVM)
+A three-day planning assumption is used because the original dataset does not provide supplier lead-time information.
 
-Decision Tree
+### 4. Class Imbalance
 
-Random Forest
+The evaluation results show that the positive class is difficult for several models to identify.
 
-The models are evaluated on the chronological final 20% holdout set.
+### 5. Not a Production System
 
-Evaluation Metrics
+The application should be considered a **coursework/prototype decision-support system**, not a production inventory-management solution.
 
-The project reports:
+---
 
-Accuracy
+## Future Improvements
 
-Precision
+A stronger real-world version could use:
 
-Recall
+* Actual company stockout records
+* Real supplier lead times
+* Supplier reliability
+* Safety-stock information
+* Reorder points
+* Historical purchase orders
+* Cost-sensitive learning
+* Class-imbalance techniques
+* Probability calibration
+* Threshold optimization
+* Walk-forward validation
+* Model monitoring
+* Data-drift detection
+* Automated retraining
 
-F1-score
+With real operational data, these improvements could make the system more suitable for practical inventory decision support.
 
-ROC-AUC
+---
 
-Confusion-matrix counts: TN, FP, FN, TP
+## What I Learned
 
-For stockout-risk classification, precision, recall, F1-score, and ROC-AUC should be considered alongside accuracy, because a high accuracy value can be misleading when the positive class is relatively uncommon.
+This project helped demonstrate that machine learning is not simply about obtaining the highest accuracy score.
 
-8. Actual Model Comparison
+The important lessons include:
 
-The following results are taken from:
+* Defining the business problem clearly
+* Creating an appropriate target
+* Preventing data leakage
+* Engineering meaningful features
+* Comparing multiple algorithms
+* Understanding class imbalance
+* Evaluating models using multiple metrics
+* Saving and deploying a trained model
+* Connecting machine learning with a real business decision
 
-outputs/results/model_comparison.csv
+Most importantly, the project showed that **model evaluation must be connected to the actual business problem**.
 
-Model
+---
 
-Accuracy
+## Conclusion
 
-Precision
+The FMCG Stockout Risk Prediction project demonstrates how machine learning can be applied to inventory risk analysis.
 
-Recall
+The system takes historical retail information, creates a seven-day stockout-risk target, engineers useful inventory and demand features, compares six classification algorithms, selects a model using multiple evaluation metrics, and deploys the trained pipeline through a Flask web application.
 
-F1
+Although the current results show important limitations, especially class imbalance and the use of a derived target, the project provides a complete and reproducible foundation for understanding **machine-learning-based inventory risk prediction**.
 
-ROC-AUC
+The next step toward a production-quality solution would be to train and validate the system using **real observed stockout events and operational supply-chain data**.
 
-Logistic Regression
+---
 
-49.59%
+### Final Project Statement
 
-3.73%
-
-51.41%
-
-6.96%
-
-0.511
-
-Decision Tree
-
-37.91%
-
-3.60%
-
-61.77%
-
-6.80%
-
-0.488
-
-SVM
-
-96.33%
-
-0.00%
-
-0.00%
-
-0.00%
-
-0.512
-
-KNN
-
-96.33%
-
-0.00%
-
-0.00%
-
-0.00%
-
-0.508
-
-Naive Bayes
-
-96.33%
-
-0.00%
-
-0.00%
-
-0.00%
-
-0.505
-
-Random Forest
-
-96.22%
-
-0.00%
-
-0.00%
-
-0.00%
-
-0.488
-
-Selected Model
-
-The training pipeline selects the model by sorting the holdout results by:
-
-F1-score
-
-Recall
-
-ROC-AUC
-
-The current project selected:
-
-Logistic Regression
-
-The fitted pipeline is saved as:
-
-models/best_model.joblib
-
-Important Interpretation of the Current Results
-
-The current dataset produces a strong class imbalance on the holdout set. Several models achieve approximately 96% accuracy while predicting zero positive cases, which results in 0% precision, recall, and F1-score.
-
-For this reason, the project does not treat accuracy alone as evidence of a good stockout-risk model.
-
-The current Logistic Regression model has:
-
-Accuracy: 49.59%
-
-Precision: 3.73%
-
-Recall: 51.41%
-
-F1-score: 6.96%
-
-ROC-AUC: 0.511
-
-This means the current model should be presented as a coursework prototype and decision-support demonstration, not as a production-ready stockout prediction system.
-
-9. Web Application
-
-The project uses Flask rather than Streamlit.
-
-The Flask application:
-
-Loads the saved model pipeline.
-
-Accepts prediction inputs through a web form.
-
-Builds a DataFrame using the trained feature schema.
-
-Generates a binary risk prediction.
-
-Calculates the model's positive-class probability.
-
-Converts the probability into a project-defined risk band.
-
-Displays a recommendation for inventory review.
-
-The application does not retrain the model when the page is opened.
-
-Main Pages
-
-Home
-
-Prediction Workbench
-
-Model Comparison
-
-Analytics
-
-About
-
-10. Project Structure
-
-fmcg-stockout-risk-prediction/
-│
-├── app.py
-├── requirements.txt
-├── README.md
-├── PRESENTATION_NOTES.md
-│
-├── data/
-│   ├── raw/
-│   │   └── retail_store_inventory.csv
-│   └── processed/
-│       └── processed_inventory_data.csv
-│
-├── models/
-│   ├── best_model.joblib
-│   └── model_metadata.json
-│
-├── outputs/
-│   ├── figures/
-│   │   ├── model_comparison.png
-│   │   ├── stock_distribution.png
-│   │   ├── sales_velocity.png
-│   │   ├── demand_variability.png
-│   │   ├── promotion_vs_stockout.png
-│   │   ├── stock_vs_stockout.png
-│   │   └── target_distribution.png
-│   │
-│   └── results/
-│       └── model_comparison.csv
-│
-├── src/
-│   ├── data_preprocessing.py
-│   ├── feature_engineering.py
-│   └── train_models.py
-│
-├── templates/
-│   ├── base.html
-│   ├── index.html
-│   ├── predict.html
-│   ├── models.html
-│   ├── analytics.html
-│   └── about.html
-│
-└── static/
-    └── style.css
-
-11. Installation and Setup
-
-1. Clone or download the project
-
-Open the project folder in VS Code.
-
-2. Create a virtual environment
-
-python -m venv .venv
-
-3. Activate the environment
-
-.\.venv\Scripts\Activate.ps1
-
-If PowerShell blocks activation, use the virtual environment's Python directly:
-
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-
-4. Install dependencies
-
-pip install -r requirements.txt
-
-5. Train and compare the models
-
-python src\train_models.py
-
-This generates:
-
-Model comparison results
-
-Model comparison chart
-
-EDA charts
-
-best_model.joblib
-
-model_metadata.json
-
-6. Start the Flask application
-
-python app.py
-
-7. Open the application
-
-Open:
-
-http://127.0.0.1:5000/
-
-12. Outputs
-
-Model Results
-
-outputs/results/model_comparison.csv
-
-Contains the actual holdout metrics and confusion-matrix counts.
-
-Trained Model
-
-models/best_model.joblib
-
-Contains the fitted preprocessing and selected classification model.
-
-Model Metadata
-
-models/model_metadata.json
-
-Contains:
-
-Selected model
-
-Feature list
-
-Target name
-
-Risk thresholds
-
-Analytics
-
-The project generates visualizations for:
-
-Current stock distribution
-
-Sales velocity
-
-Demand variability
-
-Promotion vs. derived stockout
-
-Stock vs. derived stockout
-
-Target distribution
-
-Model comparison
-
-13. Why Multiple Models?
-
-Different algorithms make different assumptions about the relationship between the input features and the target.
-
-Comparing several models allows the project to make the model-selection process measurable instead of choosing an algorithm arbitrarily.
-
-The final model is selected from the actual chronological holdout results using F1-score, recall, and ROC-AUC rather than accuracy alone.
-
-14. Limitations
-
-This project has several important limitations:
-
-The source dataset is synthetic, not observed company data.
-
-The target is a derived stockout proxy, not a directly recorded stockout event.
-
-Supplier lead time is not available in the source dataset, so the project uses a disclosed 3-day planning assumption.
-
-The current holdout results show substantial class-imbalance effects.
-
-The model should not be used to automatically place purchase orders.
-
-The current results are not sufficient to claim production-level predictive performance.
-
-15. Future Improvements
-
-A production-oriented version could improve the project by using:
-
-Real observed stockout transaction data
-
-Actual supplier lead times
-
-Supplier reliability information
-
-Reorder points and safety-stock levels
-
-Cost-sensitive learning
-
-Threshold tuning based on business costs
-
-Probability calibration
-
-Walk-forward / time-series validation
-
-Class-imbalance strategies
-
-Model monitoring and drift detection
-
-Production data pipelines
-
-Automated model retraining
-
-16. Conclusion
-
-This project demonstrates a complete machine learning workflow for FMCG inventory stockout-risk decision support.
-
-It covers:
-
-Business problem definition
-
-Dataset preparation
-
-Feature engineering
-
-Leakage-aware target construction
-
-Classification
-
-Multiple-model comparison
-
-Holdout evaluation
-
-Model persistence
-
-Flask deployment
-
-Risk interpretation
-
-Business-oriented recommendations
+> **“This project uses machine learning to estimate seven-day stockout risk from historical inventory, sales, demand variability, pricing, promotion, and store/product information. Multiple classification models are compared using accuracy, precision, recall, F1-score, and ROC-AUC, and the selected model is deployed through a Flask web application to provide inventory decision support.”**
