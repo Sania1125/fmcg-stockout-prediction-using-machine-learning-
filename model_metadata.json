@@ -1,0 +1,23 @@
+{
+  "best_model": "Logistic Regression",
+  "features": [
+    "current_stock",
+    "sales_velocity",
+    "lead_time_days",
+    "demand_variability",
+    "promotion_status",
+    "price",
+    "discount",
+    "category",
+    "region",
+    "weather_condition",
+    "seasonality",
+    "day_of_week",
+    "month"
+  ],
+  "target": "stockout_within_7_days",
+  "risk_thresholds": {
+    "medium": 0.35,
+    "high": 0.65
+  }
+}

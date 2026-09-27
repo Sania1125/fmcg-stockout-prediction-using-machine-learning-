@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="pagehead">
+    <p class="eyebrow">PREDICTION WORKBENCH</p>
+
+    <h1>Stockout Risk Prediction</h1>
+
+    <p>
+        Enter your own inventory and demand information.
+        The ML model will generate a prediction based on your inputs.
+    </p>
+</div>
+
+{% if error %}
+<div class="alert">
+    {{ error }}
+</div>
+{% endif %}
+
+<form method="post" action="/predict" class="form-grid">
+
+    <!-- Current Stock -->
+    <label>
+        Current Stock
+        <input
+            name="current_stock"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Enter current stock"
+            required
+        >
+    </label>
+
+    <!-- Sales Velocity -->
+    <label>
+        Sales Velocity (7-day average)
+        <input
+            name="sales_velocity"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Enter sales velocity"
+            required
+        >
+    </label>
+
+    <!-- Lead Time -->
+    <label>
+        Lead Time (days)
+        <input
+            name="lead_time_days"
+            type="number"
+            step="1"
+            min="0"
+            placeholder="Enter lead time"
+            required
+        >
+    </label>
+
+    <!-- Demand Variability -->
+    <label>
+        Demand Variability
+        <input
+            name="demand_variability"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Enter demand variability"
+            required
+        >
+    </label>
+
+    <!-- Promotion -->
+    <label>
+        Promotion Status
+        <select name="promotion_status" required>
+            <option value="" selected disabled>
+                Select promotion status
+            </option>
+            <option value="0">No Promotion</option>
+            <option value="1">Promotion</option>
+        </select>
+    </label>
+
+    <!-- Price -->
+    <label>
+        Price
+        <input
+            name="price"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Enter price"
+            required
+        >
+    </label>
+
+    <!-- Discount -->
+    <label>
+        Discount
+        <input
+            name="discount"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Enter discount"
+            required
+        >
+    </label>
+
+    <!-- Category -->
+    <label>
+        Category
+        <select name="category" required>
+            <option value="" selected disabled>
+                Select category
+            </option>
+            <option value="Groceries">Groceries</option>
+            <option value="Clothing">Clothing</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Toys">Toys</option>
+        </select>
+    </label>
+
+    <!-- Region -->
+    <label>
+        Region
+        <select name="region" required>
+            <option value="" selected disabled>
+                Select region
+            </option>
+            <option value="North">North</option>
+            <option value="South">South</option>
+            <option value="East">East</option>
+            <option value="West">West</option>
+        </select>
+    </label>
+
+    <!-- Weather -->
+    <label>
+        Weather Condition
+        <select name="weather_condition" required>
+            <option value="" selected disabled>
+                Select weather
+            </option>
+            <option value="Sunny">Sunny</option>
+            <option value="Rainy">Rainy</option>
+            <option value="Cloudy">Cloudy</option>
+            <option value="Snowy">Snowy</option>
+        </select>
+    </label>
+
+    <!-- Seasonality -->
+    <label>
+        Seasonality
+        <select name="seasonality" required>
+            <option value="" selected disabled>
+                Select seasonality
+            </option>
+            <option value="Spring">Spring</option>
+            <option value="Summer">Summer</option>
+            <option value="Autumn">Autumn</option>
+            <option value="Winter">Winter</option>
+        </select>
+    </label>
+
+    <!-- Day of Week -->
+    <label>
+        Day of Week
+        <select name="day_of_week" required>
+            <option value="" selected disabled>
+                Select day
+            </option>
+
+            {% for i in range(7) %}
+            <option value="{{ i }}">
+                {{ ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i] }}
+            </option>
+            {% endfor %}
+        </select>
+    </label>
+
+    <!-- Month -->
+    <label>
+        Month
+        <select name="month" required>
+            <option value="" selected disabled>
+                Select month
+            </option>
+
+            {% for i in range(1,13) %}
+            <option value="{{ i }}">{{ i }}</option>
+            {% endfor %}
+        </select>
+    </label>
+
+    <!-- Submit -->
+    <button class="button" type="submit">
+        Predict Stockout Risk →
+    </button>
+
+</form>
+
+
+{% if prediction %}
+
+<section class="result">
+
+    <div>
+        <span class="eyebrow">PREDICTION RESULT</span>
+
+        <h2>
+            Stockout:
+            <em>{{ prediction.label }}</em>
+        </h2>
+
+        <p class="prob">
+            {{ '%.1f'|format(prediction.probability * 100) }}
+            <small>% probability</small>
+        </p>
+    </div>
+
+    <div class="risk">
+
+        <span class="pill">
+            {{ prediction.risk }}
+        </span>
+
+        <h3>Suggested Action</h3>
+
+        <p>
+            {{ prediction.action }}
+        </p>
+
+        <small>
+            Low &lt; 35% |
+            Medium 35–64.9% |
+            High ≥ 65%
+        </small>
+
+    </div>
+
+</section>
+
+{% endif %}
+
+{% endblock %}
