@@ -513,10 +513,4 @@ It covers:
 - Risk interpretation
 - Business-oriented recommendations
 
-The system is best described as a **reproducible university/coursework prototype for early stockout-risk analysis**, with clear limitations and opportunities for improvement.
 
----
-
-## 17. Key Viva / Presentation Statement
-
-> **“Our project predicts the probability of a derived seven-day stockout risk for an SKU-store-day observation using historical inventory, sales velocity, demand variability, promotion, pricing, and contextual features. We compare six classification models on a chronological holdout set and select the model using F1-score, recall, and ROC-AUC rather than relying on accuracy alone. The selected model is deployed through a Flask web application for decision support.”**
