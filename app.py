@@ -2,499 +2,51 @@ from pathlib import Path
 import json
 import joblib
 import pandas as pd
-import matplotlib.pyplot as plt
 
 from flask import Flask, render_template, request, send_from_directory
-
-
-# ======================================================
-# PATH CONFIGURATION
-# ======================================================
+from jinja2 import ChoiceLoader, FileSystemLoader
+from analytics_data import AnalyticsError, read_analytics_data, summarize
 
 ROOT = Path(__file__).resolve().parent
-
 app = Flask(__name__)
+# Support both the checked-in flat layout and a conventional templates folder.
+app.jinja_loader = ChoiceLoader([
+    FileSystemLoader(str(ROOT / "templates")),
+    FileSystemLoader(str(ROOT)),
+])
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 
-MODEL_PATH = ROOT / "models" / "best_model.joblib"
+def existing_path(*names):
+    return next((ROOT / name for name in names if (ROOT / name).is_file()), ROOT / names[0])
 
-META_PATH = ROOT / "models" / "model_metadata.json"
 
-DATA_PATH = ROOT / "data" / "inventory_data.csv"
-
-RESULTS_PATH = ROOT / "outputs" / "results" / "model_comparison.csv"
-
+MODEL_PATH = existing_path("models/best_model.joblib", "best_model.joblib")
+META_PATH = existing_path("models/model_metadata.json", "model_metadata.json")
+DATA_PATH = existing_path("data/inventory_data.csv", "data/processed/processed_inventory_data.csv", "processed_inventory_data.csv")
+RESULTS_PATH = existing_path("outputs/results/model_comparison.csv", "model_comparison.csv")
 FIGURE_PATH = ROOT / "outputs" / "figures"
-
 PREDICTION_PATH = ROOT / "outputs" / "predictions.csv"
+PREDICTION_PATH.parent.mkdir(parents=True, exist_ok=True)
+FEATURES = ["current_stock","sales_velocity","lead_time_days","demand_variability","promotion_status","price","discount","category","region","weather_condition","seasonality","day_of_week","month"]
+
+# Analytics remains usable even if a saved model is unavailable or incompatible.
+try:
+    model = joblib.load(MODEL_PATH) if MODEL_PATH.exists() else None
+except Exception:
+    app.logger.exception("Unable to load prediction model")
+    model = None
+
+meta = json.loads(META_PATH.read_text()) if META_PATH.exists() else {
+    "best_model": "Not trained", "risk_thresholds": {"medium": 0.35, "high": 0.65}
+}
+results = pd.read_csv(RESULTS_PATH).to_dict("records") if RESULTS_PATH.exists() else []
 
-
-FIGURE_PATH.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-
-# ======================================================
-# FEATURES USED BY MODEL
-# ======================================================
-
-FEATURES = [
-
-    "current_stock",
-    "sales_velocity",
-    "lead_time_days",
-    "demand_variability",
-    "promotion_status",
-    "price",
-    "discount",
-    "category",
-    "region",
-    "weather_condition",
-    "seasonality",
-    "day_of_week",
-    "month"
-
-]
-
-
-
-# ======================================================
-# LOAD TRAINED MODEL
-# ======================================================
-
-model = (
-
-    joblib.load(MODEL_PATH)
-
-    if MODEL_PATH.exists()
-
-    else None
-
-)
-
-
-
-# ======================================================
-# LOAD MODEL METADATA
-# ======================================================
-
-meta = (
-
-    json.loads(
-        META_PATH.read_text()
-    )
-
-    if META_PATH.exists()
-
-    else {
-
-        "best_model": "Not trained",
-
-        "risk_thresholds": {
-
-            "medium":0.35,
-
-            "high":0.65
-
-        }
-
-    }
-
-)
-
-
-
-# ======================================================
-# LOAD MODEL RESULTS
-# ======================================================
-
-results = (
-
-    pd.read_csv(RESULTS_PATH)
-    .to_dict("records")
-
-    if RESULTS_PATH.exists()
-
-    else []
-
-)
-
-
-
-# ======================================================
-# LOAD DATASET
-# ======================================================
-
-def load_data():
-
-    if DATA_PATH.exists():
-
-        df = pd.read_csv(DATA_PATH)
-
-        return df
-
-
-    return pd.DataFrame()
-
-
-
-# ======================================================
-# LIVE ANALYTICS GENERATOR
-# ======================================================
-
-def generate_live_analytics():
-
-
-    df = load_data()
-
-
-    figures = []
-
-    stats = {}
-
-
-
-    if df.empty:
-
-        return figures, stats
-
-
-
-    # ==========================
-    # KPI CALCULATIONS
-    # ==========================
-
-
-    stats["total_records"] = len(df)
-
-
-
-    if "current_stock" in df.columns:
-
-        stats["average_stock"] = round(
-            df["current_stock"].mean(),
-            2
-        )
-
-
-
-    if "sales_velocity" in df.columns:
-
-        stats["average_sales_velocity"] = round(
-            df["sales_velocity"].mean(),
-            2
-        )
-
-
-
-    if "stockout_within_7_days" in df.columns:
-
-
-        stats["stockout_rate_%"] = round(
-
-            df["stockout_within_7_days"].mean()*100,
-
-            2
-
-        )
-
-
-        stats["total_stockouts"] = int(
-
-            df["stockout_within_7_days"].sum()
-
-        )
-
-
-
-
-    # ==========================
-    # GRAPH 1
-    # CURRENT STOCK
-    # ==========================
-
-
-    if "current_stock" in df.columns:
-
-
-        plt.figure(figsize=(8,5))
-
-
-        df["current_stock"].hist()
-
-
-        plt.title(
-            "Current Stock Distribution"
-        )
-
-
-        plt.xlabel(
-            "Current Stock"
-        )
-
-
-        plt.ylabel(
-            "Frequency"
-        )
-
-
-        file_name = "current_stock_distribution.png"
-
-
-
-        plt.savefig(
-
-            FIGURE_PATH / file_name,
-
-            bbox_inches="tight"
-
-        )
-
-
-        plt.close()
-
-
-
-        figures.append(file_name)
-
-
-
-
-
-    # ==========================
-    # GRAPH 2
-    # SALES VELOCITY
-    # ==========================
-
-
-    if "sales_velocity" in df.columns:
-
-
-        plt.figure(figsize=(8,5))
-
-
-        df["sales_velocity"].hist()
-
-
-        plt.title(
-            "Sales Velocity Distribution"
-        )
-
-
-        file_name = "sales_velocity_distribution.png"
-
-
-
-        plt.savefig(
-
-            FIGURE_PATH / file_name,
-
-            bbox_inches="tight"
-
-        )
-
-
-        plt.close()
-
-
-
-        figures.append(file_name)
-
-
-
-    # ==========================
-    # GRAPH 3
-    # STOCKOUT DISTRIBUTION
-    # ==========================
-
-
-    if "stockout_within_7_days" in df.columns:
-
-
-        plt.figure(figsize=(6,5))
-
-
-        df[
-            "stockout_within_7_days"
-        ].value_counts().plot(
-            kind="bar"
-        )
-
-
-        plt.title(
-            "Stockout Within 7 Days"
-        )
-
-
-        plt.xlabel(
-            "0 = No Stockout, 1 = Stockout"
-        )
-
-
-        file_name="stockout_distribution.png"
-
-
-
-        plt.savefig(
-
-            FIGURE_PATH / file_name,
-
-            bbox_inches="tight"
-
-        )
-
-
-        plt.close()
-    # ==========================
-    # GRAPH 4
-    # CATEGORY STOCKOUT RISK
-    # ==========================
-
-
-    if (
-        "category" in df.columns
-        and
-        "stockout_within_7_days" in df.columns
-    ):
-
-
-        category_risk = (
-
-            df.groupby("category")
-            ["stockout_within_7_days"]
-            .mean()
-            .sort_values()
-
-        )
-
-
-        plt.figure(figsize=(10,5))
-
-
-        category_risk.plot(
-            kind="bar"
-        )
-
-
-        plt.title(
-            "Stockout Risk by Category"
-        )
-
-
-        plt.ylabel(
-            "Stockout Probability"
-        )
-
-
-        file_name="category_stockout_risk.png"
-
-
-        plt.savefig(
-
-            FIGURE_PATH / file_name,
-
-            bbox_inches="tight"
-
-        )
-
-
-        plt.close()
-
-
-        figures.append(file_name)
-
-
-
-
-
-    # ==========================
-    # GRAPH 5
-    # REGION STOCKOUT RISK
-    # ==========================
-
-
-    if (
-        "region" in df.columns
-        and
-        "stockout_within_7_days" in df.columns
-    ):
-
-
-        region_risk = (
-
-            df.groupby("region")
-            ["stockout_within_7_days"]
-            .mean()
-            .sort_values()
-
-        )
-
-
-        plt.figure(figsize=(10,5))
-
-
-        region_risk.plot(
-            kind="bar"
-        )
-
-
-        plt.title(
-            "Stockout Risk by Region"
-        )
-
-
-        plt.ylabel(
-            "Stockout Probability"
-        )
-
-
-        file_name="region_stockout_risk.png"
-
-
-
-        plt.savefig(
-
-            FIGURE_PATH / file_name,
-
-            bbox_inches="tight"
-
-        )
-
-
-        plt.close()
-
-
-
-        figures.append(file_name)
-
-
-
-    return figures, stats
-
-
-
-
-
-# ======================================================
-# HOME PAGE
-# ======================================================
 
 @app.route("/")
 def index():
+    return render_template("index.html", meta=meta)
 
-    return render_template(
-        "index.html",
-        meta=meta
-    )
-
-
-
-
-
-# ======================================================
-# PREDICTION PAGE
-# ======================================================
 
 @app.route(
     "/predict",
@@ -503,76 +55,56 @@ def index():
 
 def predict():
 
-
     prediction = None
 
     error = None
 
-
-
     if request.method == "POST":
-
 
         try:
 
-
             data = {
-
 
                 "current_stock":
                 float(request.form["current_stock"]),
 
-
                 "sales_velocity":
                 float(request.form["sales_velocity"]),
-
 
                 "lead_time_days":
                 float(request.form["lead_time_days"]),
 
-
                 "demand_variability":
                 float(request.form["demand_variability"]),
-
 
                 "promotion_status":
                 int(request.form["promotion_status"]),
 
-
                 "price":
                 float(request.form["price"]),
-
 
                 "discount":
                 float(request.form["discount"]),
 
-
                 "category":
                 request.form["category"],
-
 
                 "region":
                 request.form["region"],
 
-
                 "weather_condition":
                 request.form["weather_condition"],
-
 
                 "seasonality":
                 request.form["seasonality"],
 
-
                 "day_of_week":
                 int(request.form["day_of_week"]),
-
 
                 "month":
                 int(request.form["month"])
 
             }
-
-
 
             if model is None:
 
@@ -580,14 +112,10 @@ def predict():
                     "Trained model not found."
                 )
 
-
-
             row = pd.DataFrame(
                 [data],
                 columns=FEATURES
             )
-
-
 
             probability = float(
 
@@ -595,35 +123,25 @@ def predict():
 
             )
 
-
-
             medium = float(
                 meta["risk_thresholds"]["medium"]
             )
-
 
             high = float(
                 meta["risk_thresholds"]["high"]
             )
 
-
-
             if probability >= high:
 
                 risk="High Risk"
-
 
             elif probability >= medium:
 
                 risk="Medium Risk"
 
-
             else:
 
                 risk="Low Risk"
-
-
-
 
             label = (
 
@@ -635,54 +153,37 @@ def predict():
 
             )
 
-
-
-
             action = {
-
 
                 "High Risk":
                 "Review replenishment immediately.",
 
-
                 "Medium Risk":
                 "Monitor inventory and upcoming demand.",
-
 
                 "Low Risk":
                 "Continue normal inventory monitoring."
 
             }[risk]
 
-
-
-
             prediction = {
-
 
                 "label":label,
 
+                "probability": probability,
 
                 "probability_percent":
                 round(probability*100,2),
 
-
                 "risk":risk,
 
-
                 "action":action,
-
 
                 "inputs":data
 
             }
 
-
-
-
-
             # SAVE PREDICTION HISTORY
-
 
             save = pd.DataFrame([{
 
@@ -696,8 +197,6 @@ def predict():
 
             }])
 
-
-
             save.to_csv(
 
                 PREDICTION_PATH,
@@ -710,14 +209,9 @@ def predict():
 
             )
 
-
-
-
         except Exception as e:
 
             error=str(e)
-
-
 
     return render_template(
 
@@ -730,104 +224,72 @@ def predict():
     )
 
 
-
-
-
-# ======================================================
-# ANALYTICS PAGE
-# ======================================================
-
-@app.route("/analytics")
+@app.route("/analytics", methods=["GET", "POST"])
 def analytics():
+    source = request.form.get("source", "upload") if request.method == "POST" else request.args.get("source", "dataset")
+    context = {"source": source, "source_name": "", "stats": [], "charts": [], "notes": [], "error": None}
+    status = 200
+    try:
+        if source == "upload" and request.method == "POST":
+            upload = request.files.get("file")
+            if upload is None or not upload.filename:
+                raise AnalyticsError("Choose a CSV file to analyse.")
+            if not upload.filename.lower().endswith(".csv"):
+                raise AnalyticsError("Choose a file with a .csv extension.")
+            data = read_analytics_data(upload.stream)
+            context["source_name"] = "Uploaded CSV: " + upload.filename
+        elif source in ("dataset", "predictions"):
+            path = DATA_PATH if source == "dataset" else PREDICTION_PATH
+            context["source_name"] = path.name
+            if not path.exists():
+                if source == "predictions":
+                    raise AnalyticsError("No saved predictions yet. Make a prediction first, then refresh this view.")
+                raise AnalyticsError("Dataset not found. Add processed_inventory_data.csv to the project folder or upload a CSV below.")
+            data = read_analytics_data(path)
+        else:
+            raise AnalyticsError("Choose Dataset or Saved predictions, or upload a CSV.")
+        context.update(summarize(data, meta.get("risk_thresholds")))
+    except AnalyticsError as exc:
+        context["error"] = str(exc)
+        status = 400
+    response = app.make_response((render_template("analytics.html", **context), status))
+    # Re-read current data on every request and prevent cached dashboard results.
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
-    figures, stats = generate_live_analytics()
+@app.errorhandler(413)
+def upload_too_large(error):
+    return render_template("analytics.html", source="upload", source_name="",
+                           stats=[], charts=[], notes=[],
+                           error="CSV is too large. Maximum upload size is 16 MB."), 413
 
 
-
-    return render_template(
-
-        "analytics.html",
-
-        figures=figures,
-
-        stats=stats
-
-    )
+@app.route("/static/style.css")
+def stylesheet():
+    directory = ROOT / "static" if (ROOT / "static" / "style.css").is_file() else ROOT
+    return send_from_directory(directory, "style.css")
 
 
+@app.route("/analytics.css")
+def analytics_stylesheet():
+    return send_from_directory(ROOT, "analytics.css")
 
-
-
-# ======================================================
-# MODEL PAGE
-# ======================================================
 
 @app.route("/models")
 def models():
+    return render_template("models.html", results=results, meta=meta)
 
 
-    return render_template(
-
-        "models.html",
-
-        results=results,
-
-        meta=meta
-
-    )
-
-
-
-
-
-# ======================================================
-# SERVE FIGURES
-# ======================================================
-
-@app.route(
-    "/figures/<path:filename>"
-)
-
+@app.route("/figures/<path:filename>")
 def figures_file(filename):
+    return send_from_directory(FIGURE_PATH, filename)
 
-
-    return send_from_directory(
-
-        FIGURE_PATH,
-
-        filename
-
-    )
-
-
-
-
-
-# ======================================================
-# ABOUT
-# ======================================================
 
 @app.route("/about")
 def about():
+    return render_template("about.html")
 
-    return render_template(
-        "about.html"
-    )
-
-
-
-
-
-# ======================================================
-# RUN APPLICATION
-# ======================================================
 
 if __name__ == "__main__":
-
-    app.run(
-        debug=True
-    )
-
-
-        figures.append(file_name)
+    app.run(debug=True)
